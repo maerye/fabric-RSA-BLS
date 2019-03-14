@@ -165,7 +165,7 @@ func TestGetECPublicKey(t *testing.T) {
 	_, err = csp.GetECPublicKey(priv)
 	assert.EqualError(t, err, "pubKeyErr", "Expected pubKeyErr")
 
-	//cleanup(testDir)
+	cleanup(testDir)
 }
 
 func cleanup(dir string) {
