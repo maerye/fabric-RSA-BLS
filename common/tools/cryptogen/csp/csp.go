@@ -8,8 +8,10 @@ package csp
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"github.com/hyperledger/fabric/bls"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -74,6 +76,8 @@ func LoadPrivateKey(keystorePath string) (bccsp.Key, crypto.Signer, error) {
 	return priv, s, err
 }
 
+
+
 // GeneratePrivateKey creates a private key and stores it in keystorePath
 func GeneratePrivateKey(keystorePath string) (bccsp.Key,
 	crypto.Signer, error) {
@@ -123,4 +127,100 @@ func GetECPublicKey(priv bccsp.Key) (*ecdsa.PublicKey, error) {
 		return nil, err
 	}
 	return ecPubKey.(*ecdsa.PublicKey), nil
+}
+
+func GenerateRSAPrivateKey(keystorePath string) (bccsp.Key,
+crypto.Signer, error){
+	var err error
+	var priv bccsp.Key
+	var s crypto.Signer
+
+	opts := &factory.FactoryOpts{
+		ProviderName: "SW",
+		SwOpts: &factory.SwOpts{
+			HashFamily: "SHA2",
+			SecLevel:   256,
+
+			FileKeystore: &factory.FileKeystoreOpts{
+				KeyStorePath: keystorePath,
+			},
+		},
+	}
+	csp, err := factory.GetBCCSPFromOpts(opts)
+	if err == nil {
+		// generate a key
+		priv, err = csp.KeyGen(&bccsp.RSAKeyGenOpts{Temporary: false})
+		if err == nil {
+			// create a crypto.Signer
+			s, err = signer.New(csp, priv)
+		}
+	}
+	return priv, s, err
+
+}
+
+func GetRSAPublicKey(priv bccsp.Key) ( *rsa.PublicKey, error) {
+
+	// get the public key
+	pubKey, err := priv.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+	// marshal to bytes
+	pubKeyBytes, err := pubKey.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	if err != nil {
+		return nil, err
+	}
+	// unmarshal using pkix
+	rsaPubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+	if err != nil {
+		return nil, err
+	}
+	return rsaPubKey.(*rsa.PublicKey),nil
+
+}
+
+func GenerateBLSPrivateKey(keystorePath string)(bccsp.Key,
+crypto.Signer, error){
+	var err error
+	var priv bccsp.Key
+	var s crypto.Signer
+
+	opts := &factory.FactoryOpts{
+		ProviderName: "SW",
+		SwOpts: &factory.SwOpts{
+			HashFamily: "SHA2",
+			SecLevel:   256,
+
+			FileKeystore: &factory.FileKeystoreOpts{
+				KeyStorePath: keystorePath,
+			},
+		},
+	}
+	csp, err := factory.GetBCCSPFromOpts(opts)
+	if err == nil {
+		// generate a key
+		priv, err = csp.KeyGen(&bccsp.BLSKeyGenOpts{Temporary: false})
+		if err == nil {
+			// create a crypto.Signer
+			s, err = signer.New(csp, priv)
+		}
+	}
+	return priv, s, err
+}
+
+func GetBLSPublicKey(priv bccsp.Key) ( key *bls.PublicKey,err error) {
+
+	 pub ,err:=priv.PublicKey()
+	if err != nil {
+		return nil,err
+	}
+	 raw, err :=pub.Bytes()
+	if err != nil {
+		return nil,err
+	}
+	 return bls.PubKeyFromBytes(raw)
 }

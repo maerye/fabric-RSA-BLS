@@ -203,6 +203,7 @@ var (
 	gen           = app.Command("generate", "Generate key material")
 	outputDir     = gen.Flag("output", "The output directory in which to place artifacts").Default("crypto-config").String()
 	genConfigFile = gen.Flag("config", "The configuration template to use").File()
+	algtype = gen.Flag("type","The signature algorithm type").String()
 
 	showtemplate = app.Command("showtemplate", "Show the default configuration template")
 
@@ -218,7 +219,16 @@ func main() {
 
 	// "generate" command
 	case gen.FullCommand():
-		generate()
+		if *algtype == "RSA"{
+			fmt.Println("genenrating rsa config")
+			generateRSA()
+		} else if *algtype == "BLS" {
+			fmt.Println("generating bls config")
+			generateBLS()
+		} else {
+			generate()
+		}
+
 
 	case ext.FullCommand():
 		extend()
@@ -397,6 +407,59 @@ func generate() {
 	}
 }
 
+func generateRSA() {
+
+	config, err := getConfig()
+	if err != nil {
+		fmt.Printf("Error reading config: %s", err)
+		os.Exit(-1)
+	}
+
+	for _, orgSpec := range config.PeerOrgs {
+		err = renderOrgSpec(&orgSpec, "peer")
+		if err != nil {
+			fmt.Printf("Error processing peer configuration: %s", err)
+			os.Exit(-1)
+		}
+		generateRSAPeerOrg(*outputDir, orgSpec)
+	}
+
+	for _, orgSpec := range config.OrdererOrgs {
+		err = renderOrgSpec(&orgSpec, "orderer")
+		if err != nil {
+			fmt.Printf("Error processing orderer configuration: %s", err)
+			os.Exit(-1)
+		}
+		generateRSAOrdererOrg(*outputDir, orgSpec)
+	}
+}
+func generateBLS() {
+
+	config, err := getConfig()
+	if err != nil {
+		fmt.Printf("Error reading config: %s", err)
+		os.Exit(-1)
+	}
+
+	for _, orgSpec := range config.PeerOrgs {
+		err = renderOrgSpec(&orgSpec, "peer")
+		if err != nil {
+			fmt.Printf("Error processing peer configuration: %s", err)
+			os.Exit(-1)
+		}
+		generateBLSPeerOrg(*outputDir, orgSpec)
+	}
+
+	for _, orgSpec := range config.OrdererOrgs {
+		err = renderOrgSpec(&orgSpec, "orderer")
+		if err != nil {
+			fmt.Printf("Error processing orderer configuration: %s", err)
+			os.Exit(-1)
+		}
+		generateBLSOrdererOrg(*outputDir, orgSpec)
+	}
+}
+
 func parseTemplate(input string, data interface{}) (string, error) {
 
 	t, err := template.New("parse").Parse(input)
@@ -571,6 +634,147 @@ func generatePeerOrg(baseDir string, orgSpec OrgSpec) {
 	}
 }
 
+func generateRSAPeerOrg(baseDir string, orgSpec OrgSpec) {
+
+	orgName := orgSpec.Domain
+
+	fmt.Println(orgName)
+	// generate CAs
+	orgDir := filepath.Join(baseDir, "peerOrganizations", orgName)
+	caDir := filepath.Join(orgDir, "ca")
+	tlsCADir := filepath.Join(orgDir, "tlsca")
+	mspDir := filepath.Join(orgDir, "msp")
+	peersDir := filepath.Join(orgDir, "peers")
+	usersDir := filepath.Join(orgDir, "users")
+	adminCertsDir := filepath.Join(mspDir, "admincerts")
+	// generate signing CA
+	signCA, err := ca.NewRSACA(caDir, orgName, orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating signCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+	// generate TLS CA
+	tlsCA, err := ca.NewRSACA(tlsCADir, orgName, "tls"+orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating tlsCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	err = msp.GenerateRSAVerifyingMSP(mspDir, signCA, tlsCA, orgSpec.EnableNodeOUs)
+	if err != nil {
+		fmt.Printf("Error generating MSP for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	generateRSANodes(peersDir, orgSpec.Specs, signCA, tlsCA, msp.PEER, orgSpec.EnableNodeOUs)
+
+	// TODO: add ability to specify usernames
+	users := []NodeSpec{}
+	for j := 1; j <= orgSpec.Users.Count; j++ {
+		user := NodeSpec{
+			CommonName: fmt.Sprintf("%s%d@%s", userBaseName, j, orgName),
+		}
+
+		users = append(users, user)
+	}
+	// add an admin user
+	adminUser := NodeSpec{
+		CommonName: fmt.Sprintf("%s@%s", adminBaseName, orgName),
+	}
+
+	users = append(users, adminUser)
+	generateRSANodes(usersDir, users, signCA, tlsCA, msp.CLIENT, orgSpec.EnableNodeOUs)
+
+	// copy the admin cert to the org's MSP admincerts
+	err = copyAdminCert(usersDir, adminCertsDir, adminUser.CommonName)
+	if err != nil {
+		fmt.Printf("Error copying admin cert for org %s:\n%v\n",
+			orgName, err)
+		os.Exit(1)
+	}
+
+	// copy the admin cert to each of the org's peer's MSP admincerts
+	for _, spec := range orgSpec.Specs {
+		err = copyAdminCert(usersDir,
+			filepath.Join(peersDir, spec.CommonName, "msp", "admincerts"), adminUser.CommonName)
+		if err != nil {
+			fmt.Printf("Error copying admin cert for org %s peer %s:\n%v\n",
+				orgName, spec.CommonName, err)
+			os.Exit(1)
+		}
+	}
+}
+func generateBLSPeerOrg(baseDir string, orgSpec OrgSpec) {
+
+	orgName := orgSpec.Domain
+
+	fmt.Println(orgName)
+	// generate CAs
+	orgDir := filepath.Join(baseDir, "peerOrganizations", orgName)
+	caDir := filepath.Join(orgDir, "ca")
+	tlsCADir := filepath.Join(orgDir, "tlsca")
+	mspDir := filepath.Join(orgDir, "msp")
+	peersDir := filepath.Join(orgDir, "peers")
+	usersDir := filepath.Join(orgDir, "users")
+	adminCertsDir := filepath.Join(mspDir, "admincerts")
+	// generate signing CA
+	signCA, err := ca.NewBLSCA(caDir, orgName, orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating signCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+	// generate TLS CA
+	tlsCA, err := ca.NewBLSCA(tlsCADir, orgName, "tls"+orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating tlsCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	err = msp.GenerateBLSVerifyingMSP(mspDir, signCA, tlsCA, orgSpec.EnableNodeOUs)
+	if err != nil {
+		fmt.Printf("Error generating MSP for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	generateBLSNodes(peersDir, orgSpec.Specs, signCA, tlsCA, msp.PEER, orgSpec.EnableNodeOUs)
+
+	// TODO: add ability to specify usernames
+	users := []NodeSpec{}
+	for j := 1; j <= orgSpec.Users.Count; j++ {
+		user := NodeSpec{
+			CommonName: fmt.Sprintf("%s%d@%s", userBaseName, j, orgName),
+		}
+
+		users = append(users, user)
+	}
+	// add an admin user
+	adminUser := NodeSpec{
+		CommonName: fmt.Sprintf("%s@%s", adminBaseName, orgName),
+	}
+
+	users = append(users, adminUser)
+	generateBLSNodes(usersDir, users, signCA, tlsCA, msp.CLIENT, orgSpec.EnableNodeOUs)
+
+	// copy the admin cert to the org's MSP admincerts
+	err = copyAdminCert(usersDir, adminCertsDir, adminUser.CommonName)
+	if err != nil {
+		fmt.Printf("Error copying admin cert for org %s:\n%v\n",
+			orgName, err)
+		os.Exit(1)
+	}
+
+	// copy the admin cert to each of the org's peer's MSP admincerts
+	for _, spec := range orgSpec.Specs {
+		err = copyAdminCert(usersDir,
+			filepath.Join(peersDir, spec.CommonName, "msp", "admincerts"), adminUser.CommonName)
+		if err != nil {
+			fmt.Printf("Error copying admin cert for org %s peer %s:\n%v\n",
+				orgName, spec.CommonName, err)
+			os.Exit(1)
+		}
+	}
+}
+
 func copyAdminCert(usersDir, adminCertsDir, adminUserName string) error {
 	if _, err := os.Stat(filepath.Join(adminCertsDir,
 		adminUserName+"-cert.pem")); err == nil {
@@ -602,6 +806,33 @@ func generateNodes(baseDir string, nodes []NodeSpec, signCA *ca.CA, tlsCA *ca.CA
 		nodeDir := filepath.Join(baseDir, node.CommonName)
 		if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
 			err := msp.GenerateLocalMSP(nodeDir, node.CommonName, node.SANS, signCA, tlsCA, nodeType, nodeOUs)
+			if err != nil {
+				fmt.Printf("Error generating local MSP for %s:\n%v\n", node, err)
+				os.Exit(1)
+			}
+		}
+	}
+}
+
+func generateRSANodes(baseDir string, nodes []NodeSpec, signCA *ca.CA, tlsCA *ca.CA, nodeType int, nodeOUs bool) {
+
+	for _, node := range nodes {
+		nodeDir := filepath.Join(baseDir, node.CommonName)
+		if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
+			err := msp.GenerateLocalRSAMSP(nodeDir, node.CommonName, node.SANS, signCA, tlsCA, nodeType, nodeOUs)
+			if err != nil {
+				fmt.Printf("Error generating local MSP for %s:\n%v\n", node, err)
+				os.Exit(1)
+			}
+		}
+	}
+}
+func generateBLSNodes(baseDir string, nodes []NodeSpec, signCA *ca.BLSCA, tlsCA *ca.BLSCA, nodeType int, nodeOUs bool) {
+
+	for _, node := range nodes {
+		nodeDir := filepath.Join(baseDir, node.CommonName)
+		if _, err := os.Stat(nodeDir); os.IsNotExist(err) {
+			err := msp.GenerateLocalBLSMSP(nodeDir, node.CommonName, node.SANS, signCA, tlsCA, nodeType, nodeOUs)
 			if err != nil {
 				fmt.Printf("Error generating local MSP for %s:\n%v\n", node, err)
 				os.Exit(1)
@@ -674,6 +905,133 @@ func generateOrdererOrg(baseDir string, orgSpec OrgSpec) {
 
 }
 
+func generateRSAOrdererOrg(baseDir string, orgSpec OrgSpec) {
+
+	orgName := orgSpec.Domain
+
+	// generate CAs
+	orgDir := filepath.Join(baseDir, "ordererOrganizations", orgName)
+	caDir := filepath.Join(orgDir, "ca")
+	tlsCADir := filepath.Join(orgDir, "tlsca")
+	mspDir := filepath.Join(orgDir, "msp")
+	orderersDir := filepath.Join(orgDir, "orderers")
+	usersDir := filepath.Join(orgDir, "users")
+	adminCertsDir := filepath.Join(mspDir, "admincerts")
+	// generate signing CA
+	signCA, err := ca.NewRSACA(caDir, orgName, orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating signCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+	// generate TLS CA
+	tlsCA, err := ca.NewRSACA(tlsCADir, orgName, "tls"+orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating tlsCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	err = msp.GenerateRSAVerifyingMSP(mspDir, signCA, tlsCA, false)
+	if err != nil {
+		fmt.Printf("Error generating MSP for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	generateRSANodes(orderersDir, orgSpec.Specs, signCA, tlsCA, msp.ORDERER, false)
+
+	adminUser := NodeSpec{
+		CommonName: fmt.Sprintf("%s@%s", adminBaseName, orgName),
+	}
+
+	// generate an admin for the orderer org
+	users := []NodeSpec{}
+	// add an admin user
+	users = append(users, adminUser)
+	generateRSANodes(usersDir, users, signCA, tlsCA, msp.CLIENT, false)
+
+	// copy the admin cert to the org's MSP admincerts
+	err = copyAdminCert(usersDir, adminCertsDir, adminUser.CommonName)
+	if err != nil {
+		fmt.Printf("Error copying admin cert for org %s:\n%v\n",
+			orgName, err)
+		os.Exit(1)
+	}
+
+	// copy the admin cert to each of the org's orderers's MSP admincerts
+	for _, spec := range orgSpec.Specs {
+		err = copyAdminCert(usersDir,
+			filepath.Join(orderersDir, spec.CommonName, "msp", "admincerts"), adminUser.CommonName)
+		if err != nil {
+			fmt.Printf("Error copying admin cert for org %s orderer %s:\n%v\n",
+				orgName, spec.CommonName, err)
+			os.Exit(1)
+		}
+	}
+
+}
+
+func generateBLSOrdererOrg(baseDir string, orgSpec OrgSpec) {
+
+	orgName := orgSpec.Domain
+
+	// generate CAs
+	orgDir := filepath.Join(baseDir, "ordererOrganizations", orgName)
+	caDir := filepath.Join(orgDir, "ca")
+	tlsCADir := filepath.Join(orgDir, "tlsca")
+	mspDir := filepath.Join(orgDir, "msp")
+	orderersDir := filepath.Join(orgDir, "orderers")
+	usersDir := filepath.Join(orgDir, "users")
+	adminCertsDir := filepath.Join(mspDir, "admincerts")
+	// generate signing CA
+	signCA, err := ca.NewBLSCA(caDir, orgName, orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating signCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+	// generate TLS CA
+	tlsCA, err := ca.NewBLSCA(tlsCADir, orgName, "tls"+orgSpec.CA.CommonName, orgSpec.CA.Country, orgSpec.CA.Province, orgSpec.CA.Locality, orgSpec.CA.OrganizationalUnit, orgSpec.CA.StreetAddress, orgSpec.CA.PostalCode)
+	if err != nil {
+		fmt.Printf("Error generating tlsCA for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	err = msp.GenerateBLSVerifyingMSP(mspDir, signCA, tlsCA, false)
+	if err != nil {
+		fmt.Printf("Error generating MSP for org %s:\n%v\n", orgName, err)
+		os.Exit(1)
+	}
+
+	generateBLSNodes(orderersDir, orgSpec.Specs, signCA, tlsCA, msp.ORDERER, false)
+
+	adminUser := NodeSpec{
+		CommonName: fmt.Sprintf("%s@%s", adminBaseName, orgName),
+	}
+
+	// generate an admin for the orderer org
+	users := []NodeSpec{}
+	// add an admin user
+	users = append(users, adminUser)
+	generateBLSNodes(usersDir, users, signCA, tlsCA, msp.CLIENT, false)
+
+	// copy the admin cert to the org's MSP admincerts
+	err = copyAdminCert(usersDir, adminCertsDir, adminUser.CommonName)
+	if err != nil {
+		fmt.Printf("Error copying admin cert for org %s:\n%v\n",
+			orgName, err)
+		os.Exit(1)
+	}
+
+	// copy the admin cert to each of the org's orderers's MSP admincerts
+	for _, spec := range orgSpec.Specs {
+		err = copyAdminCert(usersDir,
+			filepath.Join(orderersDir, spec.CommonName, "msp", "admincerts"), adminUser.CommonName)
+		if err != nil {
+			fmt.Printf("Error copying admin cert for org %s orderer %s:\n%v\n",
+				orgName, spec.CommonName, err)
+			os.Exit(1)
+		}
+	}
+
+}
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -713,3 +1071,5 @@ func getCA(caDir string, spec OrgSpec, name string) *ca.CA {
 		PostalCode:         spec.CA.PostalCode,
 	}
 }
+
+

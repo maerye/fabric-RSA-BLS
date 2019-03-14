@@ -7,15 +7,16 @@ package csp_test
 
 import (
 	"crypto/ecdsa"
+	"crypto/rsa"
 	"encoding/hex"
 	"errors"
+	"github.com/hyperledger/fabric/bccsp"
+	"github.com/hyperledger/fabric/bls"
+	"github.com/hyperledger/fabric/common/tools/cryptogen/csp"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/hyperledger/fabric/bccsp"
-	"github.com/hyperledger/fabric/common/tools/cryptogen/csp"
-	"github.com/stretchr/testify/assert"
 )
 
 // mock implementation of bccsp.Key interface
@@ -45,7 +46,7 @@ func (mk *mockKey) Symmetric() bool { return false }
 
 func (mk *mockKey) Private() bool { return false }
 
-var testDir = filepath.Join(os.TempDir(), "csp-test")
+var testDir = filepath.Join("./", "csp-test")
 
 func TestLoadPrivateKey(t *testing.T) {
 	priv, _, _ := csp.GeneratePrivateKey(testDir)
@@ -73,6 +74,62 @@ func TestGeneratePrivateKey(t *testing.T) {
 
 }
 
+
+func TestGenerateRSAPrivateKey(t *testing.T) {
+
+	priv, signer, err := csp.GenerateRSAPrivateKey(testDir)
+	assert.NoError(t, err, "Failed to generate private key")
+	assert.NotNil(t, priv, "Should have returned a bccsp.Key")
+	assert.Equal(t, true, priv.Private(), "Failed to return private key")
+	assert.NotNil(t, signer, "Should have returned a crypto.Signer")
+	pkFile := filepath.Join(testDir, hex.EncodeToString(priv.SKI())+"_sk")
+	t.Log(pkFile)
+	assert.Equal(t, true, checkForFile(pkFile),
+		"Expected to find private key file")
+
+	cleanup(testDir)
+
+}
+func TestGetRSAPublicKey(t *testing.T) {
+
+	priv, _, err := csp.GenerateRSAPrivateKey(testDir)
+	assert.NoError(t, err, "Failed to generate private key")
+
+	rsaPubKey, err := csp.GetRSAPublicKey(priv)
+	assert.NoError(t, err, "Failed to get public key from private key")
+	assert.IsType(t, &rsa.PublicKey{}, rsaPubKey,
+		"Failed to return an ecdsa.PublicKey")
+
+	cleanup(testDir)
+}
+
+func TestGenerateBLSPrivateKey(t *testing.T) {
+
+	priv, signer, err := csp.GenerateBLSPrivateKey(testDir)
+	assert.NoError(t, err, "Failed to generate private key")
+	assert.NotNil(t, priv, "Should have returned a bccsp.Key")
+	assert.Equal(t, true, priv.Private(), "Failed to return private key")
+	assert.NotNil(t, signer, "Should have returned a crypto.Signer")
+	pkFile := filepath.Join(testDir, hex.EncodeToString(priv.SKI())+"_sk")
+	t.Log(pkFile)
+	assert.Equal(t, true, checkForFile(pkFile),
+		"Expected to find private key file")
+
+	cleanup(testDir)
+
+}
+func TestGetBLSPublicKey(t *testing.T) {
+
+	priv, _, err := csp.GenerateBLSPrivateKey(testDir)
+	assert.NoError(t, err, "Failed to generate private key")
+
+	blsPubkey, err := csp.GetBLSPublicKey(priv)
+	assert.NoError(t, err, "Failed to get public key from private key")
+	assert.IsType(t, &bls.PublicKey{}, blsPubkey,
+		"Failed to return an ecdsa.PublicKey")
+
+	cleanup(testDir)
+}
 func TestGetECPublicKey(t *testing.T) {
 
 	priv, _, err := csp.GeneratePrivateKey(testDir)
@@ -108,7 +165,7 @@ func TestGetECPublicKey(t *testing.T) {
 	_, err = csp.GetECPublicKey(priv)
 	assert.EqualError(t, err, "pubKeyErr", "Expected pubKeyErr")
 
-	cleanup(testDir)
+	//cleanup(testDir)
 }
 
 func cleanup(dir string) {

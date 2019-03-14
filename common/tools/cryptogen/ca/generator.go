@@ -9,9 +9,11 @@ import (
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"github.com/hyperledger/fabric/bls"
 	"io/ioutil"
 	"math/big"
 	"net"
@@ -35,6 +37,18 @@ type CA struct {
 	//SignKey  *ecdsa.PrivateKey
 	Signer   crypto.Signer
 	SignCert *x509.Certificate
+}
+type BLSCA struct {
+	Name               string
+	Country            string
+	Province           string
+	Locality           string
+	OrganizationalUnit string
+	StreetAddress      string
+	PostalCode         string
+	//SignKey  *ecdsa.PrivateKey
+	Signer   crypto.Signer
+	SignCert *bls.Certificate
 }
 
 // NewCA creates an instance of CA and saves the signing key pair in
@@ -91,6 +105,108 @@ func NewCA(baseDir, org, name, country, province, locality, orgUnit, streetAddre
 	return ca, response
 }
 
+func NewRSACA(baseDir, org, name, country, province, locality, orgUnit, streetAddress, postalCode string) (*CA, error) {
+
+	var response error
+	var ca *CA
+
+	err := os.MkdirAll(baseDir, 0755)
+	if err == nil {
+		priv, signer, err := csp.GenerateRSAPrivateKey(baseDir)
+		response = err
+		if err == nil {
+			// get public signing certificate
+			rsaPubKey, err := csp.GetRSAPublicKey(priv)
+			response = err
+			if err == nil {
+				template := x509Template()
+				//this is a CA
+				template.IsCA = true
+				template.KeyUsage |= x509.KeyUsageDigitalSignature |
+					x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign |
+					x509.KeyUsageCRLSign
+				template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+
+				//set the organization for the subject
+				subject := subjectTemplateAdditional(country, province, locality, orgUnit, streetAddress, postalCode)
+				subject.Organization = []string{org}
+				subject.CommonName = name
+
+				template.Subject = subject
+				template.SubjectKeyId = priv.SKI()
+
+				x509Cert, err := genCertificateRSA(baseDir, name, &template, &template,
+					rsaPubKey, signer)
+				response = err
+				if err == nil {
+					ca = &CA{
+						Name:               name,
+						Signer:             signer,
+						SignCert:           x509Cert,
+						Country:            country,
+						Province:           province,
+						Locality:           locality,
+						OrganizationalUnit: orgUnit,
+						StreetAddress:      streetAddress,
+						PostalCode:         postalCode,
+					}
+				}
+			}
+		}
+	}
+	return ca, response
+}
+func NewBLSCA(baseDir, org, name, country, province, locality, orgUnit, streetAddress, postalCode string) (*BLSCA, error) {
+
+	var response error
+	var ca *BLSCA
+
+	err := os.MkdirAll(baseDir, 0755)
+	if err == nil {
+		priv, signer, err := csp.GenerateBLSPrivateKey(baseDir)
+		response = err
+		if err == nil {
+			// get public signing certificate
+			blsPubKey, err := csp.GetBLSPublicKey(priv)
+			response = err
+			if err == nil {
+				template := x509Template()
+				//this is a CA
+				template.IsCA = true
+				template.KeyUsage |= x509.KeyUsageDigitalSignature |
+					x509.KeyUsageKeyEncipherment | x509.KeyUsageCertSign |
+					x509.KeyUsageCRLSign
+				template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageAny}
+
+				//set the organization for the subject
+				subject := subjectTemplateAdditional(country, province, locality, orgUnit, streetAddress, postalCode)
+				subject.Organization = []string{org}
+				subject.CommonName = name
+
+				template.Subject = subject
+				template.SubjectKeyId = priv.SKI()
+				temp :=bls.ParseX509Certificate2BLS(&template)
+				x509Cert, err := genCertificateBLS(baseDir, name, temp, temp,
+					blsPubKey, signer)
+				response = err
+				if err == nil {
+					ca = &BLSCA{
+						Name:               name,
+						Signer:             signer,
+						SignCert:           x509Cert,
+						Country:            country,
+						Province:           province,
+						Locality:           locality,
+						OrganizationalUnit: orgUnit,
+						StreetAddress:      streetAddress,
+						PostalCode:         postalCode,
+					}
+				}
+			}
+		}
+	}
+	return ca, response
+}
 // SignCertificate creates a signed certificate based on a built-in template
 // and saves it in baseDir/name
 func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecdsa.PublicKey,
@@ -127,6 +243,72 @@ func (ca *CA) SignCertificate(baseDir, name string, ous, sans []string, pub *ecd
 	return cert, nil
 }
 
+func (ca *CA) SignRSACertificate(baseDir, name string, ous, sans []string, pub *rsa.PublicKey,
+	ku x509.KeyUsage, eku []x509.ExtKeyUsage) (*x509.Certificate, error) {
+
+	template := x509Template()
+	template.KeyUsage = ku
+	template.ExtKeyUsage = eku
+
+	//set the organization for the subject
+	subject := subjectTemplateAdditional(ca.Country, ca.Province, ca.Locality, ca.OrganizationalUnit, ca.StreetAddress, ca.PostalCode)
+	subject.CommonName = name
+
+	subject.OrganizationalUnit = append(subject.OrganizationalUnit, ous...)
+
+	template.Subject = subject
+	for _, san := range sans {
+		// try to parse as an IP address first
+		ip := net.ParseIP(san)
+		if ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, san)
+		}
+	}
+
+	cert, err := genCertificateRSA(baseDir, name, &template, ca.SignCert,
+		pub, ca.Signer)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cert, nil
+}
+func (ca *BLSCA) SignBLSCertificate(baseDir, name string, ous, sans []string, pub *bls.PublicKey,
+	ku x509.KeyUsage, eku []x509.ExtKeyUsage) (*bls.Certificate, error) {
+
+	template := x509Template()
+	template.KeyUsage = ku
+	template.ExtKeyUsage = eku
+
+	//set the organization for the subject
+	subject := subjectTemplateAdditional(ca.Country, ca.Province, ca.Locality, ca.OrganizationalUnit, ca.StreetAddress, ca.PostalCode)
+	subject.CommonName = name
+
+	subject.OrganizationalUnit = append(subject.OrganizationalUnit, ous...)
+
+	template.Subject = subject
+	for _, san := range sans {
+		// try to parse as an IP address first
+		ip := net.ParseIP(san)
+		if ip != nil {
+			template.IPAddresses = append(template.IPAddresses, ip)
+		} else {
+			template.DNSNames = append(template.DNSNames, san)
+		}
+	}
+	tmp:=bls.ParseX509Certificate2BLS(&template)
+	cert, err := genCertificateBLS(baseDir, name, tmp, ca.SignCert,
+		pub, ca.Signer)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return cert, nil
+}
 // default template for X509 subject
 func subjectTemplate() pkix.Name {
 	return pkix.Name{
@@ -214,6 +396,62 @@ func genCertificateECDSA(baseDir, name string, template, parent *x509.Certificat
 	return x509Cert, nil
 }
 
+func genCertificateRSA(baseDir, name string, template, parent *x509.Certificate, pub *rsa.PublicKey,
+	priv interface{}) (*x509.Certificate, error) {
+
+	//create the x509 public cert
+	certBytes, err := x509.CreateCertificate(rand.Reader, template, parent, pub, priv)
+	if err != nil {
+		return nil, err
+	}
+
+	//write cert out to file
+	fileName := filepath.Join(baseDir, name+"-cert.pem")
+	certFile, err := os.Create(fileName)
+	if err != nil {
+		return nil, err
+	}
+	//pem encode the cert
+	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	certFile.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	x509Cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		return nil, err
+	}
+	return x509Cert, nil
+}
+func genCertificateBLS(baseDir, name string, template, parent *bls.Certificate, pub *bls.PublicKey,
+	priv interface{}) (*bls.Certificate, error) {
+
+	//create the x509 public cert
+	certBytes, err := bls.CreateCertificate(rand.Reader, template, parent, pub, priv)
+	if err != nil {
+		return nil, err
+	}
+
+	//write cert out to file
+	fileName := filepath.Join(baseDir, name+"-cert.pem")
+	certFile, err := os.Create(fileName)
+	if err != nil {
+		return nil, err
+	}
+	//pem encode the cert
+	err = pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes})
+	certFile.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	x509Cert, err := bls.ParseCertificate(certBytes)
+	if err != nil {
+		return nil, err
+	}
+	return x509Cert, nil
+}
 // LoadCertificateECDSA load a ecdsa cert from a file in cert path
 func LoadCertificateECDSA(certPath string) (*x509.Certificate, error) {
 	var cert *x509.Certificate
@@ -227,6 +465,54 @@ func LoadCertificateECDSA(certPath string) (*x509.Certificate, error) {
 			}
 			block, _ := pem.Decode(rawCert)
 			cert, err = utils.DERToX509Certificate(block.Bytes)
+		}
+		return nil
+	}
+
+	err = filepath.Walk(certPath, walkFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	return cert, err
+}
+
+// LoadCertificateRSA load a rsa cert from a file in cert path
+func LoadCertificateRSA(certPath string) (*x509.Certificate, error) {
+	var cert *x509.Certificate
+	var err error
+
+	walkFunc := func(path string, info os.FileInfo, err error) error {
+		if strings.HasSuffix(path, ".pem") {
+			rawCert, err := ioutil.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			block, _ := pem.Decode(rawCert)
+			cert, err = utils.DERToX509Certificate(block.Bytes)
+		}
+		return nil
+	}
+
+	err = filepath.Walk(certPath, walkFunc)
+	if err != nil {
+		return nil, err
+	}
+
+	return cert, err
+}
+func LoadCertificateBLS(certPath string) (*bls.Certificate, error) {
+	var cert *bls.Certificate
+	var err error
+
+	walkFunc := func(path string, info os.FileInfo, err error) error {
+		if strings.HasSuffix(path, ".pem") {
+			rawCert, err := ioutil.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			block, _ := pem.Decode(rawCert)
+			cert, err = bls.ParseCertificate(block.Bytes)
 		}
 		return nil
 	}
