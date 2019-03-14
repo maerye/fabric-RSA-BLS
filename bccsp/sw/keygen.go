@@ -22,8 +22,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
-
 	"github.com/hyperledger/fabric/bccsp"
+	"github.com/hyperledger/fabric/bls"
 )
 
 type ecdsaKeyGenerator struct {
@@ -64,4 +64,16 @@ func (kg *rsaKeyGenerator) KeyGen(opts bccsp.KeyGenOpts) (bccsp.Key, error) {
 	}
 
 	return &rsaPrivateKey{lowLevelKey}, nil
+}
+type blsKeyGenerator struct {
+
+}
+
+func (kg *blsKeyGenerator) KeyGen(opts bccsp.KeyGenOpts)(bccsp.Key, error){
+	lowlevelKey,err :=bls.GenerateKey()
+	if err != nil {
+		return nil, fmt.Errorf("Failed generating BLS key [%s]", err)
+	}
+
+	return &blsPrivateKey{lowlevelKey},nil
 }

@@ -26,6 +26,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/hyperledger/fabric/bls"
 )
 
 // struct to hold info required for PKCS#8
@@ -142,8 +143,21 @@ func PrivateKeyToPEM(privateKey interface{}, pwd []byte) ([]byte, error) {
 				Bytes: raw,
 			},
 		), nil
+	case *bls.PrivateKey:
+		if k == nil {
+			return nil, errors.New("Invalid bls private key. It must be different from nil.")
+		}
+		raw,err:= k.Bytes()
+		if err != nil {
+			return nil,err
+		}
+		if len(raw)==0{
+			return nil,fmt.Errorf(" bls private key bytes length is 0")
+		}
+		return pem.EncodeToMemory(&pem.Block{Type: "BLS PRIVATE KEY", Bytes: raw}),nil
+
 	default:
-		return nil, errors.New("Invalid key type. It must be *ecdsa.PrivateKey or *rsa.PrivateKey")
+		return nil, errors.New("Invalid key type. It must be *ecdsa.PrivateKey or *rsa.PrivateKey or *bls.PrivateKey")
 	}
 }
 
@@ -162,6 +176,31 @@ func PrivateKeyToEncryptedPEM(privateKey interface{}, pwd []byte) ([]byte, error
 
 		if err != nil {
 			return nil, err
+		}
+
+		block, err := x509.EncryptPEMBlock(
+			rand.Reader,
+			"PRIVATE KEY",
+			raw,
+			pwd,
+			x509.PEMCipherAES256)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return pem.EncodeToMemory(block), nil
+	case *bls.PrivateKey:
+		if k ==nil{
+			return nil, errors.New("Invalid bls private key. It must be different from nil.")
+		}
+		raw,err :=k.Bytes()
+		if err != nil {
+			return nil,err
+		}
+
+		if len(raw) ==0 {
+			return nil,errors.New("bls private key bytes length is 0")
 		}
 
 		block, err := x509.EncryptPEMBlock(
@@ -201,8 +240,10 @@ func DERToPrivateKey(der []byte) (key interface{}, err error) {
 	if key, err = x509.ParseECPrivateKey(der); err == nil {
 		return
 	}
-
-	return nil, errors.New("Invalid key type. The DER must contain an rsa.PrivateKey or ecdsa.PrivateKey")
+	if key,err = bls.PriKeyFromBytes(der);err == nil{
+		return
+	}
+	return nil, errors.New("Invalid key type. The DER must contain an rsa.PrivateKey or ecdsa.PrivateKey or bls.privatekey")
 }
 
 // PEMtoPrivateKey unmarshals a pem to private key
@@ -265,6 +306,7 @@ func PEMtoAES(raw []byte, pwd []byte) ([]byte, error) {
 
 	return block.Bytes, nil
 }
+
 
 // AEStoPEM encapsulates an AES key in the PEM format
 func AEStoPEM(raw []byte) []byte {
@@ -335,7 +377,24 @@ func PublicKeyToPEM(publicKey interface{}, pwd []byte) ([]byte, error) {
 				Bytes: PubASN1,
 			},
 		), nil
+	case *bls.PublicKey:
+		if k == nil {
+			return nil, errors.New("Invalid bls public key. It must be different from nil.")
+		}
+		raw,err := k.Bytes()
+		if err != nil {
+			return nil,err
+		}
+		if len(raw) ==0 {
+			return nil, errors.New("lenght of bls pubkey is 0")
+		}
 
+		return pem.EncodeToMemory(
+			&pem.Block{
+				Type:  "BLS PUBLIC KEY",
+				Bytes: raw,
+			},
+		), nil
 	default:
 		return nil, errors.New("Invalid key type. It must be *ecdsa.PublicKey or *rsa.PublicKey")
 	}
@@ -369,7 +428,16 @@ func PublicKeyToDER(publicKey interface{}) ([]byte, error) {
 		}
 
 		return PubASN1, nil
-
+	//case *bls.PublicKey:
+	//	if k == nil {
+	//		return nil, errors.New("Invalid bls public key. It must be different from nil.")
+	//	}
+	//	PubASN1, err := k.Bytes()
+	//	if err != nil {
+	//		return nil, err
+	//	}
+	//
+	//	return PubASN1, nil
 	default:
 		return nil, errors.New("Invalid key type. It must be *ecdsa.PublicKey or *rsa.PublicKey")
 	}
@@ -406,7 +474,30 @@ func PublicKeyToEncryptedPEM(publicKey interface{}, pwd []byte) ([]byte, error) 
 		}
 
 		return pem.EncodeToMemory(block), nil
+	case *bls.PublicKey:
+		if k == nil {
+			return nil, errors.New("Invalid bls public key. It must be different from nil.")
+		}
+		raw,err:=k.Bytes()
+		if err != nil {
+			return nil,err
+		}
+		if len(raw)==0 {
+			return nil, errors.New("length of bls pubkey is 0")
+		}
 
+		block, err := x509.EncryptPEMBlock(
+			rand.Reader,
+			"PUBLIC KEY",
+			raw,
+			pwd,
+			x509.PEMCipherAES256)
+
+		if err != nil {
+			return nil, err
+		}
+
+		return pem.EncodeToMemory(block), nil
 	default:
 		return nil, errors.New("Invalid key type. It must be *ecdsa.PublicKey")
 	}
@@ -453,7 +544,11 @@ func DERToPublicKey(raw []byte) (pub interface{}, err error) {
 		return nil, errors.New("Invalid DER. It must be different from nil.")
 	}
 
-	key, err := x509.ParsePKIXPublicKey(raw)
-
-	return key, err
+	if pub, err = x509.ParsePKIXPublicKey(raw);err==nil{
+		return
+	}
+	if pub,err=bls.PubKeyFromBytes(raw);err==nil{
+		return
+	}
+	return nil, errors.New("Invalid key type. The DER must contain an rsa.PublicKey or ecdsa.PublicKey or bls.PublicKey")
 }

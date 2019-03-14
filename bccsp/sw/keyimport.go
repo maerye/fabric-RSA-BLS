@@ -19,10 +19,10 @@ package sw
 import (
 	"errors"
 	"fmt"
+	"github.com/hyperledger/fabric/bls"
 
 	"crypto/ecdsa"
 	"crypto/rsa"
-	"crypto/x509"
 	"reflect"
 
 	"github.com/hyperledger/fabric/bccsp"
@@ -134,18 +134,29 @@ func (*rsaGoPublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bccs
 
 	return &rsaPublicKey{lowLevelKey}, nil
 }
+type blsGoPublicKeyImportOptsKeyImporter struct {
+}
+func (*blsGoPublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bccsp.KeyImportOpts) (bccsp.Key, error) {
+	lowLevelKey, ok := raw.(*bls.PublicKey)
+	if !ok {
+		return nil, errors.New("Invalid raw material. Expected *bls.PublicKey.")
+	}
+
+	return &blsPublicKey{lowLevelKey}, nil
+}
 
 type x509PublicKeyImportOptsKeyImporter struct {
 	bccsp *CSP
 }
 
 func (ki *x509PublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bccsp.KeyImportOpts) (bccsp.Key, error) {
-	x509Cert, ok := raw.(*x509.Certificate)
+	x509Cert, ok := raw.(*bls.Certificate)
 	if !ok {
 		return nil, errors.New("Invalid raw material. Expected *x509.Certificate.")
 	}
 
 	pk := x509Cert.PublicKey
+
 
 	switch pk.(type) {
 	case *ecdsa.PublicKey:
@@ -156,7 +167,13 @@ func (ki *x509PublicKeyImportOptsKeyImporter) KeyImport(raw interface{}, opts bc
 		return ki.bccsp.keyImporters[reflect.TypeOf(&bccsp.RSAGoPublicKeyImportOpts{})].KeyImport(
 			pk,
 			&bccsp.RSAGoPublicKeyImportOpts{Temporary: opts.Ephemeral()})
+	case *bls.PublicKey:
+		return ki.bccsp.keyImporters[reflect.TypeOf(&bccsp.BLSGoPublicKeyImportOpts{})].KeyImport(
+			pk,
+			&bccsp.BLSGoPublicKeyImportOpts{Temporary:opts.Ephemeral()})
+
 	default:
+
 		return nil, errors.New("Certificate's public key type not recognized. Supported keys: [ECDSA, RSA]")
 	}
 }

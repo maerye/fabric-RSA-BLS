@@ -45,6 +45,8 @@ const (
 	// RSA at 4096 bit security level.
 	RSA4096 = "RSA4096"
 
+	BLS = "BLS"
+
 	// AES Advanced Encryption Standard at the default security level.
 	// Each BCCSP may or may not support default security level. If not supported than
 	// an error will be returned.
@@ -288,7 +290,18 @@ func (opts *RSAKeyGenOpts) Algorithm() string {
 func (opts *RSAKeyGenOpts) Ephemeral() bool {
 	return opts.Temporary
 }
+type BLSKeyGenOpts struct{
+	Temporary bool
+}
+func (opts *BLSKeyGenOpts) Algorithm() string {
+	return BLS
+}
 
+// Ephemeral returns true if the key to generate has to be ephemeral,
+// false otherwise.
+func (opts *BLSKeyGenOpts) Ephemeral() bool {
+	return opts.Temporary
+}
 // ECDSAGoPublicKeyImportOpts contains options for RSA key importation from rsa.PublicKey
 type RSAGoPublicKeyImportOpts struct {
 	Temporary bool
@@ -302,6 +315,17 @@ func (opts *RSAGoPublicKeyImportOpts) Algorithm() string {
 // Ephemeral returns true if the key to generate has to be ephemeral,
 // false otherwise.
 func (opts *RSAGoPublicKeyImportOpts) Ephemeral() bool {
+	return opts.Temporary
+}
+type BLSGoPublicKeyImportOpts struct {
+	Temporary bool
+}
+
+func (*BLSGoPublicKeyImportOpts) Algorithm() string {
+	return BLS
+}
+
+func (opts *BLSGoPublicKeyImportOpts) Ephemeral() bool {
 	return opts.Temporary
 }
 

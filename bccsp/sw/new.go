@@ -60,12 +60,15 @@ func NewWithParams(securityLevel int, hashFamily string, keyStore bccsp.KeyStore
 	// Set the signers
 	swbccsp.AddWrapper(reflect.TypeOf(&ecdsaPrivateKey{}), &ecdsaSigner{})
 	swbccsp.AddWrapper(reflect.TypeOf(&rsaPrivateKey{}), &rsaSigner{})
+	swbccsp.AddWrapper(reflect.TypeOf(&blsPrivateKey{}),&blsSigner{})
 
 	// Set the verifiers
 	swbccsp.AddWrapper(reflect.TypeOf(&ecdsaPrivateKey{}), &ecdsaPrivateKeyVerifier{})
 	swbccsp.AddWrapper(reflect.TypeOf(&ecdsaPublicKey{}), &ecdsaPublicKeyKeyVerifier{})
 	swbccsp.AddWrapper(reflect.TypeOf(&rsaPrivateKey{}), &rsaPrivateKeyVerifier{})
 	swbccsp.AddWrapper(reflect.TypeOf(&rsaPublicKey{}), &rsaPublicKeyKeyVerifier{})
+	swbccsp.AddWrapper(reflect.TypeOf(&blsPrivateKey{}),&blsPrivateKeyVerifier{})
+	swbccsp.AddWrapper(reflect.TypeOf(&blsPublicKey{}),&blsPublicKeyVerifier{})
 
 	// Set the hashers
 	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.SHAOpts{}), &hasher{hash: conf.hashFunction})
@@ -87,6 +90,7 @@ func NewWithParams(securityLevel int, hashFamily string, keyStore bccsp.KeyStore
 	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.RSA2048KeyGenOpts{}), &rsaKeyGenerator{length: 2048})
 	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.RSA3072KeyGenOpts{}), &rsaKeyGenerator{length: 3072})
 	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.RSA4096KeyGenOpts{}), &rsaKeyGenerator{length: 4096})
+	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.BLSKeyGenOpts{}),&blsKeyGenerator{})
 
 	// Set the key generators
 	swbccsp.AddWrapper(reflect.TypeOf(&ecdsaPrivateKey{}), &ecdsaPrivateKeyKeyDeriver{})
@@ -102,5 +106,6 @@ func NewWithParams(securityLevel int, hashFamily string, keyStore bccsp.KeyStore
 	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.RSAGoPublicKeyImportOpts{}), &rsaGoPublicKeyImportOptsKeyImporter{})
 	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.X509PublicKeyImportOpts{}), &x509PublicKeyImportOptsKeyImporter{bccsp: swbccsp})
 
+	swbccsp.AddWrapper(reflect.TypeOf(&bccsp.BLSGoPublicKeyImportOpts{}),&blsGoPublicKeyImportOptsKeyImporter{})
 	return swbccsp, nil
 }

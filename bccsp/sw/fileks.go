@@ -17,19 +17,18 @@ package sw
 
 import (
 	"bytes"
+	"github.com/hyperledger/fabric/bls"
 	"io/ioutil"
 	"os"
 	"sync"
 
 	"errors"
 	"strings"
-
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
 	"path/filepath"
-
 	"github.com/hyperledger/fabric/bccsp"
 	"github.com/hyperledger/fabric/bccsp/utils"
 )
@@ -141,6 +140,9 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 			return &ecdsaPrivateKey{key.(*ecdsa.PrivateKey)}, nil
 		case *rsa.PrivateKey:
 			return &rsaPrivateKey{key.(*rsa.PrivateKey)}, nil
+		case *bls.PrivateKey:
+			return &blsPrivateKey{key.(*bls.PrivateKey)},nil
+
 		default:
 			return nil, errors.New("Secret key type not recognized")
 		}
@@ -156,6 +158,9 @@ func (ks *fileBasedKeyStore) GetKey(ski []byte) (bccsp.Key, error) {
 			return &ecdsaPublicKey{key.(*ecdsa.PublicKey)}, nil
 		case *rsa.PublicKey:
 			return &rsaPublicKey{key.(*rsa.PublicKey)}, nil
+		case *bls.PublicKey:
+			return &blsPublicKey{key.(*bls.PublicKey)},nil
+
 		default:
 			return nil, errors.New("Public key type not recognized")
 		}
@@ -213,6 +218,18 @@ func (ks *fileBasedKeyStore) StoreKey(k bccsp.Key) (err error) {
 		err = ks.storeKey(hex.EncodeToString(k.SKI()), kk.privKey)
 		if err != nil {
 			return fmt.Errorf("Failed storing AES key [%s]", err)
+		}
+	case *blsPrivateKey:
+		kk :=k.(*blsPrivateKey)
+		err = ks.storePrivateKey(hex.EncodeToString(k.SKI()), kk.privKey)
+		if err != nil {
+			return fmt.Errorf("Failed storing BLS private key [%s]", err)
+		}
+	case *blsPublicKey:
+		kk :=k.(*blsPublicKey)
+		err = ks.storePublicKey(hex.EncodeToString(k.SKI()), kk.pubKey)
+		if err != nil {
+			return fmt.Errorf("Failed storing BLS public key [%s]", err)
 		}
 
 	default:
