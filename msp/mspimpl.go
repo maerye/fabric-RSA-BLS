@@ -178,12 +178,12 @@ func (msp *bccspmsp) getSigningIdentityFromConf(sidInfo *m.SigningIdentityInfo) 
 		return nil, err
 	}
 	if pubKey==nil {
-		return nil,errors.New("nil pubkey in sidinfo")
+		return nil,errors.New("KeyMaterial not found in SigningIdentityInfo")
 	}
 	// Find the matching private key in the BCCSP keystore
 	privKey, err := msp.bccsp.GetKey(pubKey.SKI())
-	if privKey !=nil{
-		return nil,errors.Wrap(err,"fail to find  privatekey in of  this ski")
+	if err !=nil{
+		return nil,errors.Wrap(err,"KeyMaterial not found in SigningIdentityInfo")
 	}
 	// Less Secure: Attempt to import Private Key from KeyInfo, if BCCSP was not able to find the key
 	if err != nil {

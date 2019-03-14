@@ -1087,7 +1087,7 @@ func parsePublicKey(algo PublicKeyAlgorithm, keyData *publicKeyInfo) (interface{
 		}
 		return pub, nil
 	case BLS:
-		fmt.Println("parsing bls pubkey")
+
 		return PubKeyFromBytes(asn1Data)
 	default:
 		return nil, nil

@@ -230,7 +230,7 @@ func TestGenerateLocalBLSMSP(t *testing.T) {
 	caDir := filepath.Join(testDir, "ca")
 	tlsCADir := filepath.Join(testDir, "tlsca")
 	mspDir := filepath.Join(testDir, "msp")
-	//tlsDir := filepath.Join(testDir, "tls")
+	tlsDir := filepath.Join(testDir, "tls")
 
 	// generate signing CA
 	signCA, err := ca.NewBLSCA(caDir, testCAOrg, testCAName, testCountry, testProvince, testLocality, testOrganizationalUnit, testStreetAddress, testPostalCode)
@@ -253,47 +253,47 @@ func TestGenerateLocalBLSMSP(t *testing.T) {
 	assert.Equal(t, testPostalCode, signCA.SignCert.Subject.PostalCode[0], "Failed to match postalCode")
 
 	// generate local MSP for nodeType=PEER
-	//err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.PEER, true)
-	//assert.NoError(t, err, "Failed to generate local MSP")
+	err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.PEER, true)
+	assert.NoError(t, err, "Failed to generate local MSP")
 
-	// check to see that the right files were generated/saved
-	//mspFiles := []string{
-	//	filepath.Join(mspDir, "admincerts", testName+"-cert.pem"),
-	//	filepath.Join(mspDir, "cacerts", testCAName+"-cert.pem"),
-	//	filepath.Join(mspDir, "tlscacerts", testCAName+"-cert.pem"),
-	//	filepath.Join(mspDir, "keystore"),
-	//	filepath.Join(mspDir, "signcerts", testName+"-cert.pem"),
-	//	filepath.Join(mspDir, "config.yaml"),
-	//}
-	//tlsFiles := []string{
-	//	filepath.Join(tlsDir, "ca.crt"),
-	//	filepath.Join(tlsDir, "server.key"),
-	//	filepath.Join(tlsDir, "server.crt"),
-	//}
+	//check to see that the right files were generated/saved
+	mspFiles := []string{
+		filepath.Join(mspDir, "admincerts", testName+"-cert.pem"),
+		filepath.Join(mspDir, "cacerts", testCAName+"-cert.pem"),
+		filepath.Join(mspDir, "tlscacerts", testCAName+"-cert.pem"),
+		filepath.Join(mspDir, "keystore"),
+		filepath.Join(mspDir, "signcerts", testName+"-cert.pem"),
+		filepath.Join(mspDir, "config.yaml"),
+	}
+	tlsFiles := []string{
+		filepath.Join(tlsDir, "ca.crt"),
+		filepath.Join(tlsDir, "server.key"),
+		filepath.Join(tlsDir, "server.crt"),
+	}
 
-	//for _, file := range mspFiles {
-	//	assert.Equal(t, true, checkForFile(file),
-	//		"Expected to find file "+file)
-	//}
-	//for _, file := range tlsFiles {
-	//	assert.Equal(t, true, checkForFile(file),
-	//		"Expected to find file "+file)
-	//}
+	for _, file := range mspFiles {
+		assert.Equal(t, true, checkForFile(file),
+			"Expected to find file "+file)
+	}
+	for _, file := range tlsFiles {
+		assert.Equal(t, true, checkForFile(file),
+			"Expected to find file "+file)
+	}
 
 	//generate local MSP for nodeType=CLIENT
 	err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.CLIENT, true)
 	assert.NoError(t, err, "Failed to generate local MSP")
 	//only need to check for the TLS certs
-	//tlsFiles = []string{
-	//	filepath.Join(tlsDir, "ca.crt"),
-	//	filepath.Join(tlsDir, "client.key"),
-	//	filepath.Join(tlsDir, "client.crt"),
-	//}
-	//
-	//for _, file := range tlsFiles {
-	//	assert.Equal(t, true, checkForFile(file),
-	//		"Expected to find file "+file)
-	//}
+	tlsFiles = []string{
+		filepath.Join(tlsDir, "ca.crt"),
+		filepath.Join(tlsDir, "client.key"),
+		filepath.Join(tlsDir, "client.crt"),
+	}
+
+	for _, file := range tlsFiles {
+		assert.Equal(t, true, checkForFile(file),
+			"Expected to find file "+file)
+	}
 
 	// finally check to see if we can load this as a local MSP config
 	testMSPConfig, err := fabricmsp.GetLocalMspConfig(mspDir, nil, testName)
@@ -303,13 +303,13 @@ func TestGenerateLocalBLSMSP(t *testing.T) {
 	err = testMSP.Setup(testMSPConfig)
 	assert.NoError(t, err, "Error setting up local MSP")
 
-	//tlsCA.Name = "test/fail"
-	//err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.CLIENT, true)
-	//assert.Error(t, err, "Should have failed with CA name 'test/fail'")
-	//signCA.Name = "test/fail"
-	//err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.ORDERER, true)
-	//assert.Error(t, err, "Should have failed with CA name 'test/fail'")
-	////	t.Log(err)
+	tlsCA.Name = "test/fail"
+	err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.CLIENT, true)
+	assert.Error(t, err, "Should have failed with CA name 'test/fail'")
+	signCA.Name = "test/fail"
+	err = msp.GenerateLocalBLSMSP(testDir, testName, nil, signCA, tlsCA, msp.ORDERER, true)
+	assert.Error(t, err, "Should have failed with CA name 'test/fail'")
+	//	t.Log(err)
 	cleanup(testDir)
 
 }

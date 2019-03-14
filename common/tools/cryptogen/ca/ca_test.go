@@ -259,7 +259,7 @@ func TestGenerateSignCertificate(t *testing.T) {
 	_, err = badCA.SignCertificate(certDir, testName, nil, nil, &ecdsa.PublicKey{},
 		x509.KeyUsageKeyEncipherment, []x509.ExtKeyUsage{x509.ExtKeyUsageAny})
 	assert.Error(t, err, "Empty CA should not be able to sign")
-	//cleanup(testDir)
+	cleanup(testDir)
 
 }
 
@@ -342,7 +342,7 @@ func TestGenerateRSASignCertificate(t *testing.T) {
 	_, err = badCA.SignRSACertificate(certDir, testName, nil, nil, &rsa.PublicKey{},
 		x509.KeyUsageKeyEncipherment, []x509.ExtKeyUsage{x509.ExtKeyUsageAny})
 	assert.Error(t, err, "Empty CA should not be able to sign")
-	//cleanup(testDir)
+	cleanup(testDir)
 
 }
 func TestGenerateBLSSignCertificate(t *testing.T) {
