@@ -18,10 +18,13 @@ package msp
 
 import (
 	"crypto"
+	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/x509"
+	"crypto/rsa"
+
 	"encoding/hex"
 	"encoding/pem"
+	"github.com/hyperledger/fabric/bls"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -39,7 +42,7 @@ type identity struct {
 	id *IdentityIdentifier
 
 	// cert contains the x.509 certificate that signs the public key of this instance
-	cert *x509.Certificate
+	cert *bls.Certificate
 
 	// this is the public key of this instance
 	pk bccsp.Key
@@ -48,7 +51,7 @@ type identity struct {
 	msp *bccspmsp
 }
 
-func newIdentity(cert *x509.Certificate, pk bccsp.Key, msp *bccspmsp) (Identity, error) {
+func newIdentity(cert *bls.Certificate, pk bccsp.Key, msp *bccspmsp) (Identity, error) {
 	if mspIdentityLogger.IsEnabledFor(zapcore.DebugLevel) {
 		mspIdentityLogger.Debugf("Creating identity instance for cert %s", certToPEM(cert))
 	}
@@ -217,7 +220,7 @@ type signingidentity struct {
 	signer crypto.Signer
 }
 
-func newSigningIdentity(cert *x509.Certificate, pk bccsp.Key, signer crypto.Signer, msp *bccspmsp) (SigningIdentity, error) {
+func newSigningIdentity(cert *bls.Certificate, pk bccsp.Key, signer crypto.Signer, msp *bccspmsp) (SigningIdentity, error) {
 	//mspIdentityLogger.Infof("Creating signing identity instance for ID %s", id)
 	mspId, err := newIdentity(cert, pk, msp)
 	if err != nil {
@@ -249,7 +252,18 @@ func (id *signingidentity) Sign(msg []byte) ([]byte, error) {
 	mspIdentityLogger.Debugf("Sign: digest: %X \n", digest)
 
 	// Sign
-	return id.signer.Sign(rand.Reader, digest, nil)
+
+	switch id.signer.Public().(type){
+	case *rsa.PublicKey:
+		return id.signer.Sign(rand.Reader, digest,&rsa.PSSOptions{SaltLength: rsa.PSSSaltLengthEqualsHash, Hash: crypto.SHA256})
+	case *ecdsa.PublicKey:
+		return id.signer.Sign(rand.Reader, digest, nil)
+	case *bls.PublicKey:
+		return id.signer.Sign(rand.Reader,digest,nil)
+	default:
+		return id.signer.Sign(rand.Reader, digest, nil)
+	}
+
 }
 
 func (id *signingidentity) GetPublicVersion() Identity {

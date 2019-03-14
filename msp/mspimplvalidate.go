@@ -8,7 +8,7 @@ package msp
 
 import (
 	"bytes"
-	"crypto/x509"
+	"github.com/hyperledger/fabric/bls"
 
 	"time"
 
@@ -56,7 +56,7 @@ func (msp *bccspmsp) validateCAIdentity(id *identity) error {
 	return msp.validateIdentityAgainstChain(id, validationChain)
 }
 
-func (msp *bccspmsp) validateTLSCAIdentity(cert *x509.Certificate, opts *x509.VerifyOptions) error {
+func (msp *bccspmsp) validateTLSCAIdentity(cert *bls.Certificate, opts *bls.VerifyOptions) error {
 	if !cert.IsCA {
 		return errors.New("Only CA identities can be validated")
 	}
@@ -73,11 +73,11 @@ func (msp *bccspmsp) validateTLSCAIdentity(cert *x509.Certificate, opts *x509.Ve
 	return msp.validateCertAgainstChain(cert, validationChain)
 }
 
-func (msp *bccspmsp) validateIdentityAgainstChain(id *identity, validationChain []*x509.Certificate) error {
+func (msp *bccspmsp) validateIdentityAgainstChain(id *identity, validationChain []*bls.Certificate) error {
 	return msp.validateCertAgainstChain(id.cert, validationChain)
 }
 
-func (msp *bccspmsp) validateCertAgainstChain(cert *x509.Certificate, validationChain []*x509.Certificate) error {
+func (msp *bccspmsp) validateCertAgainstChain(cert *bls.Certificate, validationChain []*bls.Certificate) error {
 	// here we know that the identity is valid; now we have to check whether it has been revoked
 
 	// identify the SKI of the CA that signed this cert
@@ -131,6 +131,7 @@ func (msp *bccspmsp) validateCertAgainstChain(cert *x509.Certificate, validation
 func (msp *bccspmsp) validateIdentityOUsV1(id *identity) error {
 	// Check that the identity's OUs are compatible with those recognized by this MSP,
 	// meaning that the intersection is not empty.
+	return nil
 	if len(msp.ouIdentifiers) > 0 {
 		found := false
 
@@ -205,13 +206,13 @@ func (msp *bccspmsp) validateIdentityOUsV11(id *identity) error {
 	return nil
 }
 
-func (msp *bccspmsp) getValidityOptsForCert(cert *x509.Certificate) x509.VerifyOptions {
+func (msp *bccspmsp) getValidityOptsForCert(cert *bls.Certificate) bls.VerifyOptions {
 	// First copy the opts to override the CurrentTime field
 	// in order to make the certificate passing the expiration test
 	// independently from the real local current time.
 	// This is a temporary workaround for FAB-3678
 
-	var tempOpts x509.VerifyOptions
+	var tempOpts bls.VerifyOptions
 	tempOpts.Roots = msp.opts.Roots
 	tempOpts.DNSName = msp.opts.DNSName
 	tempOpts.Intermediates = msp.opts.Intermediates
@@ -266,7 +267,7 @@ func getAuthorityKeyIdentifierFromCrl(crl *pkix.CertificateList) ([]byte, error)
 
 // getSubjectKeyIdentifierFromCert returns the Subject Key Identifier for the supplied certificate
 // Subject Key Identifier is an identifier of the public key of this certificate
-func getSubjectKeyIdentifierFromCert(cert *x509.Certificate) ([]byte, error) {
+func getSubjectKeyIdentifierFromCert(cert *bls.Certificate) ([]byte, error) {
 	var SKI []byte
 
 	for _, ext := range cert.Extensions {
@@ -288,7 +289,7 @@ func getSubjectKeyIdentifierFromCert(cert *x509.Certificate) ([]byte, error) {
 // isCACert does a few checks on the certificate,
 // assuming it's a CA; it returns true if all looks good
 // and false otherwise
-func isCACert(cert *x509.Certificate) bool {
+func isCACert(cert *bls.Certificate) bool {
 	_, err := getSubjectKeyIdentifierFromCert(cert)
 	if err != nil {
 		return false

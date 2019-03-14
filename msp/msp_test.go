@@ -254,7 +254,7 @@ func TestSerializeIdentities(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(id.GetPublicVersion(), idBack) {
-		t.Fatalf("Identities should be equal (%s) (%s)", id, idBack)
+		t.Fatalf("Identities should be equal (%s)!= (%s)", id, idBack)
 		return
 	}
 }
@@ -423,6 +423,8 @@ func TestIdentitiesGetters(t *testing.T) {
 
 func TestSignAndVerify(t *testing.T) {
 	id, err := localMsp.GetDefaultSigningIdentity()
+	fmt.Println(reflect.TypeOf(id))
+
 	if err != nil {
 		t.Fatalf("GetSigningIdentity should have succeeded")
 		return
@@ -442,14 +444,15 @@ func TestSignAndVerify(t *testing.T) {
 
 	msg := []byte("foo")
 	sig, err := id.Sign(msg)
+
 	if err != nil {
-		t.Fatalf("Sign should have succeeded")
+		t.Fatalf("Sign should have succeeded,get err %s",err)
 		return
 	}
 
 	err = id.Verify(msg, sig)
 	if err != nil {
-		t.Fatalf("The signature should be valid")
+		t.Fatalf("The signature should be valid, get err %s",err)
 		return
 	}
 
