@@ -1,12 +1,13 @@
+// Copyright 2011 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package bls
-import "C"
+
 import (
 	"encoding/pem"
 	"errors"
-	"io/ioutil"
-	"os"
 	"runtime"
-	"sync"
 )
 
 // CertPool is a set of certificates.
@@ -15,18 +16,7 @@ type CertPool struct {
 	byName         map[string][]int
 	certs          []*Certificate
 }
-// Possible certificate files; stop after finding one.
-var certFiles = []string{
-	"/etc/ssl/certs/ca-certificates.crt",                // Debian/Ubuntu/Gentoo etc.
-	"/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora/RHEL 6
-	"/etc/ssl/ca-bundle.pem",                            // OpenSUSE
-	"/etc/pki/tls/cacert.pem",                           // OpenELEC
-	"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // CentOS/RHEL 7
-}
-var certDirectories = []string{
-	"/etc/ssl/certs",               // SLES10/SLES11, https://golang.org/issue/12139
-	"/system/etc/security/cacerts", // Android
-}
+
 // NewCertPool returns a new, empty CertPool.
 func NewCertPool() *CertPool {
 	return &CertPool{
@@ -55,60 +45,6 @@ func (s *CertPool) copy() *CertPool {
 	return p
 }
 
-var (
-	once           sync.Once
-	systemRoots    *CertPool
-	systemRootsErr error
-)
-
-func systemRootsPool() *CertPool {
-	once.Do(initSystemRoots)
-	return systemRoots
-}
-
-func initSystemRoots() {
-	systemRoots, systemRootsErr = loadSystemRoots()
-	if systemRootsErr != nil {
-		systemRoots = nil
-	}
-}
-
-func loadSystemRoots() (*CertPool, error) {
-	roots := NewCertPool()
-	var firstErr error
-	for _, file := range certFiles {
-		data, err := ioutil.ReadFile(file)
-		if err == nil {
-			roots.AppendCertsFromPEM(data)
-			return roots, nil
-		}
-		if firstErr == nil && !os.IsNotExist(err) {
-			firstErr = err
-		}
-	}
-
-	for _, directory := range certDirectories {
-		fis, err := ioutil.ReadDir(directory)
-		if err != nil {
-			if firstErr == nil && !os.IsNotExist(err) {
-				firstErr = err
-			}
-			continue
-		}
-		rootsAdded := false
-		for _, fi := range fis {
-			data, err := ioutil.ReadFile(directory + "/" + fi.Name())
-			if err == nil && roots.AppendCertsFromPEM(data) {
-				rootsAdded = true
-			}
-		}
-		if rootsAdded {
-			return roots, nil
-		}
-	}
-
-	return nil, firstErr
-}
 // SystemCertPool returns a copy of the system cert pool.
 //
 // Any mutations to the returned pool are not written to disk and do
@@ -156,7 +92,20 @@ func (s *CertPool) findVerifiedParents(cert *Certificate) (parents []int, errCer
 
 	return
 }
+func (s *CertPool) findPotentialParents(cert *Certificate) []int {
+	if s == nil {
+		return nil
+	}
 
+	var candidates []int
+	if len(cert.AuthorityKeyId) > 0 {
+		candidates = s.bySubjectKeyId[string(cert.AuthorityKeyId)]
+	}
+	if len(candidates) == 0 {
+		candidates = s.byName[string(cert.RawIssuer)]
+	}
+	return candidates
+}
 func (s *CertPool) contains(cert *Certificate) bool {
 	if s == nil {
 		return false
@@ -232,4 +181,3 @@ func (s *CertPool) Subjects() [][]byte {
 	}
 	return res
 }
-

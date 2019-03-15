@@ -1,8 +1,0 @@
-NodeOUs:
-  Enable: true
-  ClientOUIdentifier:
-    Certificate: ca.pem
-    OrganizationalUnitIdentifier: client
-  PeerOUIdentifier:
-    Certificate: ca.pem
-    OrganizationalUnitIdentifier: peer
