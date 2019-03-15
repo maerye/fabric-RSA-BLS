@@ -339,5 +339,5 @@ func (s *mspMessageCryptoService) getValidatedIdentity(peerIdentity api.PeerIden
 		return identity, common.ChainID(chainID), nil
 	}
 
-	return nil, nil, fmt.Errorf("Peer Identity [% x] cannot be validated. No MSP found able to do that.", peerIdentity)
+	return nil, nil, errors.Wrap(err,"Peer Identity [% x] cannot be validated. No MSP found able to do that.")
 }
